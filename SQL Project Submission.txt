@@ -1,0 +1,80 @@
+/* How many rentals did each family category have? */
+
+SELECT c.name family_category_name,
+       COUNT(r.rental_id) rental_count
+FROM category c
+JOIN film_category fc
+ON c.category_id = fc.category_id
+JOIN film f
+ON fc.film_id = f.film_id
+JOIN inventory i
+ON f.film_id = i.film_id
+JOIN rental r
+ON i.inventory_id = r.inventory_id
+WHERE c.name IN ('Animation', 'Children', 'Classics', 'Comedy', 'Family', 'Music')
+GROUP BY 1
+ORDER BY 2 DESC;
+
+/* How many monthly rentals did each store have? */
+
+SELECT DATE_PART('month', r.rental_date) AS rental_month,
+       DATE_PART('year', r.rental_date) AS rental_year,
+       sf.store_id,
+       COUNT(r.rental_date) number_rentals
+FROM rental r
+JOIN payment p
+ON r.rental_id = p.rental_id
+JOIN staff sf
+ON p.staff_id = sf.staff_id
+GROUP BY 1,2,3
+ORDER BY 2,1;
+
+/* How much did the top 10 customers spend monthly? */
+
+WITH t1 AS (SELECT p.customer_id customer_id,
+                   SUM(p.amount) total_spend
+            FROM payment p
+            GROUP BY 1
+            ORDER BY 2 DESC
+            LIMIT 10)
+
+SELECT DATE_TRUNC('month', p.payment_date) pay_month,
+       c.first_name || ' ' || c.last_name AS full_name,
+       COUNT(DATE_TRUNC('month', p.payment_date)) monthly_payment_count,
+       SUM(p.amount) pay_amount
+FROM t1
+JOIN customer c
+ON t1.customer_id = c.customer_id
+JOIN payment p
+ON t1.customer_id = p.customer_id
+GROUP BY 1,2
+ORDER BY 2,1;
+
+/* For each of the top 10 paying customers, what is their monthly difference across their monthly payments in 2007? */
+
+WITH t1 AS (SELECT p.customer_id customer_id,
+                   SUM(p.amount) total_spend
+            FROM payment p
+            GROUP BY 1
+            ORDER BY 2 DESC
+            LIMIT 10),
+
+     t2 AS (SELECT DATE_TRUNC('month', p.payment_date) pay_month,
+                   c.first_name || ' ' || c.last_name AS full_name,
+                   COUNT(DATE_TRUNC('month', p.payment_date)) monthly_payment_count,
+                   SUM(p.amount) pay_amount
+            FROM t1
+            JOIN customer c
+            ON t1.customer_id = c.customer_id
+            JOIN payment p
+            ON t1.customer_id = p.customer_id
+            GROUP BY 1,2
+            ORDER BY 2,1)
+
+SELECT pay_month,
+       full_name,
+       monthly_payment_count,
+       pay_amount,
+       pay_amount - LAG(pay_amount) OVER (PARTITION BY full_name ORDER BY pay_month) AS pay_difference
+FROM t2
+ORDER BY pay_difference DESC;
